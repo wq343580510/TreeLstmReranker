@@ -4,7 +4,7 @@ from theano import tensor as T,printing
 from theano.compat.python2x import OrderedDict
 theano.config.floatX = 'float32'
 SEED = 12389
-L2_RATIO = 0.00000001
+L2_RATIO = 0.0001
 class Node(object):
     def __init__(self, val=None,id_s = 0,tag = 0):
         self.children = []
@@ -233,9 +233,9 @@ class TreeRNN(object):
         self.tree_3 = T.imatrix(name='tree3')  # shape [None, self.degree]
         # do not consider the unk
         self.tree_4 = T.imatrix(name='tree4')  # shape [None, self.degree]
-        self.tree_states_1,self.tree_c_1 = self.compute_tree(self.emb_x1, self.tree_1[:, :-1])
-        self.tree_states_2,self.tree_c_2 = self.compute_tree(self.emb_x2, self.tree_2[:, :-1])
-        self._compute_emb = theano.function([self.x1,self.tree_1],self.tree_states_1)
+        self.tree_states_1,self.score1 = self.compute_tree(self.emb_x1, self.tree_1[:, :-1],self.tag_1)
+        self.tree_states_2,self.score2 = self.compute_tree(self.emb_x2, self.tree_2[:, :-1],self.tag_2)
+        #self._compute_emb = theano.function([self.x1,self.tree_1],self.tree_states_1)
         if self.Pairwise:
             self.forget_unit = self.create_forget_gate_fun()
             self._train_pairwise,self._predict_pair = self.create_pairwise_rank()
@@ -272,10 +272,10 @@ class TreeRNN(object):
         # leaveNum2 = self.x2.shape[0] - self.tree_2.shape[0]
         # tree_y1 = self.score_fn(self.tree_states_1[leaveNum1:],self.x1[leaveNum1:])
         # tree_y2 = self.score_fn(self.tree_states_2[leaveNum2:],self.x2[leaveNum1:])
-        tree_y1 = self.score_fn(self.tree_states_1,self.tree_1,self.tag_1)
-        tree_y2 = self.score_fn(self.tree_states_2,self.tree_2,self.tag_2)
-        loss = self.loss_fn_regular(tree_y1,tree_y2)
-        predict = theano.function([self.x1, self.tree_1,self.tag_1],T.sum(tree_y1))
+        # tree_y1 = self.score_fn(self.tree_states_1,self.tree_1,self.tag_1)
+        # tree_y2 = self.score_fn(self.tree_states_2,self.tree_2,self.tag_2)
+        loss = self.loss_fn_regular(self.score1,self.score2)
+        predict = theano.function([self.x1, self.tree_1,self.tag_1],self.score1)
         train_func = theano.function(train_inputs,loss,updates=self.adagrad(loss))
         return predict,train_func
 
@@ -324,9 +324,10 @@ class TreeRNN(object):
         return np.random.normal(scale=0.1, size=shape).astype(theano.config.floatX)
 
     def create_score_fn(self):
-        self.scoreVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim*2]))
+        self.scoreVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim]))
         self.params.append(self.scoreVector)
-
+        self.compVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim+self.emb_dim,self.hidden_dim]))
+        self.params.append(self.compVector)
         def compute_one_edge(one_child, tree_states, parent, tags):
             parent_tag = tags[parent]
             child_tag = tags[one_child]
@@ -360,6 +361,7 @@ class TreeRNN(object):
 
     def create_score_fn2(self):
         self.scoreVector = theano.shared(self.init_matrix([self.tag_size,self.tag_size, self.hidden_dim]))
+        self.compVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim+self.emb_dim,self.hidden_dim]))
         self.params.append(self.scoreVector)
         def score(state,index,vector):
             return T.dot(vector[index],state)
@@ -493,7 +495,7 @@ class TreeRNN(object):
 
         return T.concatenate([leaf_h, parent_h], axis=0)
 
-    def compute_tree(self, emb_x, tree):
+    def compute_tree(self, emb_x, tree,tags):
         num_nodes = tree.shape[0]  # num internal nodes
         num_leaves = self.num_words - num_nodes
 
@@ -503,35 +505,48 @@ class TreeRNN(object):
             sequences=[emb_x[:num_leaves]])
         init_node_h = T.concatenate([leaf_h, leaf_h], axis=0)
         init_node_c = T.concatenate([leaf_c, leaf_c], axis=0)
-
         # use recurrence to compute internal node hidden states
-        def _recurrence(cur_emb, node_info, t, node_h, node_c, last_h,last_c):
+        def _recurrence(cur_emb, node_info, t, node_h, node_c, last_h,last_c,inin_score,tags):
             child_exists = node_info > -1
             offset = num_leaves - child_exists * t
             child_h = node_h[node_info + offset] * child_exists.dimshuffle(0, 'x')
+            child_tags = tags[node_info]
+            compMatrix = self.compVector[tags[t],child_tags,:,:]
+            scoreVec = self.scoreVector[tags[t],child_tags,:]* child_exists.dimshuffle(0, 'x')
+            scores, _ = theano.map(
+                _score_edge,
+                sequences=[child_h,compMatrix,scoreVec],
+                non_sequences=[cur_emb]
+            )
             child_c = node_c[node_info + offset] * child_exists.dimshuffle(0, 'x')
             parent_h, parent_c = self.recursive_unit(cur_emb, child_h, child_c, child_exists)
             node_h = T.concatenate([node_h,
                                     parent_h.reshape([1, self.hidden_dim])])
             node_c = T.concatenate([node_c,
                                     parent_c.reshape([1, self.hidden_dim])])
-            return node_h[1:], node_c[1:], parent_h,parent_c
+            return node_h[1:], node_c[1:], parent_h,parent_c,T.sum(scores)
 
+        def _score_edge(child_h,compMatrix,scoreVec,cur_emb):
+            z = T.dot(T.concatenate([child_h,cur_emb],axis=0),compMatrix)
+            return T.dot(scoreVec,z)
         dummy = theano.shared(self.init_vector([self.hidden_dim]))
-        (_, _, parent_h,parent_c), _ = theano.scan(
+        (_, _, parent_h,parent_c,scores), _ = theano.scan(
             fn=_recurrence,
-            outputs_info=[init_node_h, init_node_c, dummy,dummy],
+            outputs_info=[init_node_h, init_node_c, dummy,dummy,np.float(0.0)],
             sequences=[emb_x[num_leaves:], tree, T.arange(num_nodes)],
+            non_sequences=[tags],
             n_steps=num_nodes)
 
-        return T.concatenate([leaf_h, parent_h], axis=0),T.concatenate([leaf_c, parent_c], axis=0)
+        return T.concatenate([leaf_h, parent_h], axis=0),T.sum(scores)
 
 
     def loss_fn_regular(self, y1, y2):
         loss = T.sum(y1-y2)
-        L2 = T.sum(self.W_i ** 2)+T.sum(self.W_o ** 2)+T.sum(self.W_u ** 2)+T.sum(self.W_f ** 2)+\
+        L2 = T.sum(self.W_i ** 2)+T.sum(self.W_o ** 2)+\
+             T.sum(self.W_u ** 2)+T.sum(self.W_f ** 2)+\
              T.sum(self.U_i ** 2)+T.sum(self.U_o ** 2)+\
-             T.sum(self.U_u ** 2)+T.sum(self.U_f ** 2)+T.sum(self.scoreVector**2)
+             T.sum(self.U_u ** 2)+T.sum(self.U_f ** 2)+\
+             T.sum(self.scoreVector**2)+T.sum(self.compVector**2)
         if self.Pairwise:
             L2 += T.sum(self.W_gate ** 2)
             L2 += T.sum(self.U_gate ** 2)

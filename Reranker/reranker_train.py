@@ -7,14 +7,14 @@ import data_util
 import dependency_model
 import random
 USE_BATCH = True
-DIR = 'd:\\MacShare\\data2\\'
+DIR = 'd:\\MacShare\\data\\'
 TRAIN = 'train'
 DEV = 'dev'
 TEST = 'test'
 OUTPUT_MODEL = 'model.pkl'
 OUTPUT_BEST = 'model_best_pairwise.pkl'
 OUTPUT_DICT = 'dict.pkl'
-TRAIN_BATCH_SIZE = 100
+TRAIN_BATCH_SIZE = 3
 PAIR_WISE = False
 NUM_EPOCHS = 20
 SEED = 88

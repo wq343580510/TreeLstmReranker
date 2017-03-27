@@ -120,7 +120,7 @@ def evaluate_dataset_point(model, data , addbase):
             scores = [p_s + b_s for p_s, b_s in zip(pred_scores, inst.scores)]
         else:
             scores = pred_scores
-        max_id = scores.index(min(scores))
+        max_id = scores.index(max(scores))
         #print max_id,scores[max_id]
         for line in inst.lines[max_id]:
             pred_trees.append(line)
