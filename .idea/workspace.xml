@@ -2,11 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="26c5ccde-9da3-45b6-bc56-255f1cf5eb7f" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/test7.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Reranker/reranker_train.py" afterPath="$PROJECT_DIR$/Reranker/reranker_train.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Reranker/train_iterator.py" afterPath="$PROJECT_DIR$/Reranker/train_iterator.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Reranker/tree_rnn.py" afterPath="$PROJECT_DIR$/Reranker/tree_rnn.py" />
     </list>
     <ignored path="GatedRanker.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -642,7 +638,14 @@
       <option name="project" value="LOCAL" />
       <updated>1490590510943</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="the slowly version">
+      <created>1491650744565</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1491650744565</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="ToolWindowManager">
@@ -682,7 +685,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="score edge in the recurrence, speed up the ranker" />
-    <option name="LAST_COMMIT_MESSAGE" value="score edge in the recurrence, speed up the ranker" />
+    <MESSAGE value="the slowly version" />
+    <option name="LAST_COMMIT_MESSAGE" value="the slowly version" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
