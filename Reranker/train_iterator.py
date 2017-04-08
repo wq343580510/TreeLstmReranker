@@ -119,6 +119,71 @@ class train_iterator(object):
             train_batch.append(data_util.instance(a, b, c, d,e))
         return train_batch
 
+    def read_random_batch(self, batch_size = 400):
+        total_list = []
+        for i in range(39830):
+            total_list.append(i)
+        import random
+        random.shuffle(total_list)
+        total_list = total_list[0:batch_size]
+        sorted(total_list)
+        scores = []
+        kscores = []
+        tree = []
+        ktrees = []
+        kbest = []
+        # read train
+        lines = []
+        klines = []
+        i = 0
+        while i < self.length:
+            line = self.data[i]
+            if line.strip() != 'PTB_KBEST':
+                if line.strip() == '':
+                    ktrees.append(read_tree(tree, self.vocab))
+                    lines.append(tree[:])
+                    tree = []
+                elif not '_' in line:
+                    scores.append(float(line))
+                else:
+                    tree.append(line)
+            else:
+                if len(ktrees) > 2:
+                    kbest.append(ktrees[:])
+                    kscores.append(scores[:])
+                    klines.append(lines[:])
+                    if read_batch and len(kbest) == self.batch:
+                        self.index += 1
+                        break
+                    ktrees = []
+                    scores = []
+                    lines = []
+            self.index += 1
+        # read gold
+        list = []
+        gold = []
+        goldlines = []
+        while self.gindex < self.glength:
+            line = self.gdata[self.gindex]
+            if line.strip() == '':
+                root = read_tree(list, self.vocab)
+                gold.append(root)
+                goldlines.append(list[:])
+                if read_batch and len(gold) == self.batch:
+                    self.gindex += 1
+                    break
+                list = []
+            else:
+                list.append(line)
+            self.gindex += 1
+        train_batch = []
+        for a, b, c, d, e in zip(kbest, kscores, gold, klines, goldlines):
+            self.kbest_id += 1
+            if len(c.children) == 0:
+                continue
+            train_batch.append(data_util.instance(a, b, c, d, e))
+        return train_batch
+
     def read_batch(self,read_batch = True):
         if self.index == self.length:
             return None

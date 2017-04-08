@@ -1,20 +1,19 @@
 import os
-
+import sys
 import numpy as np
 import parser_test
 import data_reader
 import data_util
 import dependency_model
-import random
 USE_BATCH = True
 DIR = 'd:\\MacShare\\data\\'
 TRAIN = 'train'
 DEV = 'dev'
 TEST = 'test'
 OUTPUT_MODEL = 'model.pkl'
-OUTPUT_BEST = 'model_best_pairwise.pkl'
+OUTPUT_BEST = 'model_best_pointwise.pkl'
 OUTPUT_DICT = 'dict.pkl'
-TRAIN_BATCH_SIZE = 3
+TRAIN_BATCH_SIZE = 100
 PAIR_WISE = False
 NUM_EPOCHS = 20
 SEED = 88
@@ -44,9 +43,7 @@ def train_model():
                          os.path.join(DIR, DEV + '.kbest'),
                          os.path.join(DIR, DEV + '.gold'),vocab_path= os.path.join(DIR, OUTPUT_DICT))
 
-
     dev_data = data_tool.dev_data
-    np.random.seed(SEED)
     print 'build model'
     model = dependency_model.get_model(data_tool.vocab.size(),data_tool.vocab.tagsize(), data_tool.max_degree,PAIR_WISE)
     print 'model established'

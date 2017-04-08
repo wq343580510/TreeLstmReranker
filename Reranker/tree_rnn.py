@@ -228,13 +228,11 @@ class TreeRNN(object):
         self.emb_x2 = self.embeddings[self.x2]
         self.emb_x2 = self.emb_x2 * T.neq(self.x2, -1).dimshuffle(0, 'x')  # zero-out non-existent embeddings
         self.tree_1 = T.imatrix(name='tree1')  # shape [None, self.degree]
-        # do not consider the unk
         self.tree_2 = T.imatrix(name='tree2')  # shape [None, self.degree]
         self.tree_3 = T.imatrix(name='tree3')  # shape [None, self.degree]
-        # do not consider the unk
         self.tree_4 = T.imatrix(name='tree4')  # shape [None, self.degree]
-        self.tree_states_1,self.score1 = self.compute_tree(self.emb_x1, self.tree_1[:, :-1],self.tag_1)
-        self.tree_states_2,self.score2 = self.compute_tree(self.emb_x2, self.tree_2[:, :-1],self.tag_2)
+        self.tree_states_1,self.score1 = self.compute_tree(self.emb_x1, self.tree_1[:, :-1])
+        self.tree_states_2,self.score2 = self.compute_tree(self.emb_x2, self.tree_2[:, :-1])
         #self._compute_emb = theano.function([self.x1,self.tree_1],self.tree_states_1)
         if self.Pairwise:
             self.forget_unit = self.create_forget_gate_fun()
@@ -267,7 +265,7 @@ class TreeRNN(object):
         return train_margin,predict
 
     def create_pointwise_rank(self):
-        train_inputs = [self.x1, self.x2, self.tree_1, self.tree_2,self.tag_1,self.tag_2]
+        train_inputs = [self.x1, self.x2, self.tree_1, self.tree_2]
         # leaveNum1 = self.x1.shape[0] - self.tree_1.shape[0]
         # leaveNum2 = self.x2.shape[0] - self.tree_2.shape[0]
         # tree_y1 = self.score_fn(self.tree_states_1[leaveNum1:],self.x1[leaveNum1:])
@@ -275,7 +273,7 @@ class TreeRNN(object):
         # tree_y1 = self.score_fn(self.tree_states_1,self.tree_1,self.tag_1)
         # tree_y2 = self.score_fn(self.tree_states_2,self.tree_2,self.tag_2)
         loss = self.loss_fn_regular(self.score1,self.score2)
-        predict = theano.function([self.x1, self.tree_1,self.tag_1],self.score1)
+        predict = theano.function([self.x1, self.tree_1],self.score1)
         train_func = theano.function(train_inputs,loss,updates=self.adagrad(loss))
         return predict,train_func
 
@@ -283,14 +281,14 @@ class TreeRNN(object):
         x, tree ,_,tags = gen_nn_inputs(root_node, max_degree=self.degree, with_labels= False)
         # x list the val of leaves and internal nodes
         # self._check_input(x, tree)
-        return self._predict(x, tree,tags)
+        return self._predict(x, tree)
 
     def train_pointwise(self, root1, root2):
         x, tree, _,tag1 = gen_nn_inputs(root1, max_degree=self.degree, only_leaves_have_vals=False)
         x_2, tree_2, _,tag2 = gen_nn_inputs(root2, max_degree=self.degree, only_leaves_have_vals=False)
         #self._check_input(x, tree)
         #self._check_input(x_2, tree_2)
-        loss = self._train_pointwise(x, x_2, tree, tree_2,tag1,tag2)
+        loss = self._train_pointwise(x, x_2, tree, tree_2)
         return loss
 
     def _check_input(self, x, tree):
@@ -324,9 +322,9 @@ class TreeRNN(object):
         return np.random.normal(scale=0.1, size=shape).astype(theano.config.floatX)
 
     def create_score_fn(self):
-        self.scoreVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim]))
+        self.scoreVector = theano.shared(self.init_matrix([self.hidden_dim]))
         self.params.append(self.scoreVector)
-        self.compVector = theano.shared(self.init_matrix([self.tag_size, self.tag_size, self.hidden_dim+self.emb_dim,self.hidden_dim]))
+        self.compVector = theano.shared(self.init_matrix([self.hidden_dim+self.emb_dim,self.hidden_dim]))
         self.params.append(self.compVector)
         def compute_one_edge(one_child, tree_states, parent, tags):
             parent_tag = tags[parent]
@@ -495,7 +493,7 @@ class TreeRNN(object):
 
         return T.concatenate([leaf_h, parent_h], axis=0)
 
-    def compute_tree(self, emb_x, tree,tags):
+    def compute_tree(self, emb_x, tree):
         num_nodes = tree.shape[0]  # num internal nodes
         num_leaves = self.num_words - num_nodes
 
@@ -506,17 +504,14 @@ class TreeRNN(object):
         init_node_h = T.concatenate([leaf_h, leaf_h], axis=0)
         init_node_c = T.concatenate([leaf_c, leaf_c], axis=0)
         # use recurrence to compute internal node hidden states
-        def _recurrence(cur_emb, node_info, t, node_h, node_c, last_h,last_c,inin_score,tags):
+        def _recurrence(cur_emb, node_info, t, node_h, node_c, last_h,last_c,inin_score):
             child_exists = node_info > -1
             offset = num_leaves - child_exists * t
             child_h = node_h[node_info + offset] * child_exists.dimshuffle(0, 'x')
-            child_tags = tags[node_info]
-            compMatrix = self.compVector[tags[t],child_tags,:,:]
-            scoreVec = self.scoreVector[tags[t],child_tags,:]* child_exists.dimshuffle(0, 'x')
             scores, _ = theano.map(
                 _score_edge,
-                sequences=[child_h,compMatrix,scoreVec],
-                non_sequences=[cur_emb]
+                sequences=[child_h],
+                non_sequences=[cur_emb,self.compVector,self.scoreVector]
             )
             child_c = node_c[node_info + offset] * child_exists.dimshuffle(0, 'x')
             parent_h, parent_c = self.recursive_unit(cur_emb, child_h, child_c, child_exists)
@@ -526,7 +521,7 @@ class TreeRNN(object):
                                     parent_c.reshape([1, self.hidden_dim])])
             return node_h[1:], node_c[1:], parent_h,parent_c,T.sum(scores)
 
-        def _score_edge(child_h,compMatrix,scoreVec,cur_emb):
+        def _score_edge(child_h,cur_emb,compMatrix,scoreVec):
             z = T.dot(T.concatenate([child_h,cur_emb],axis=0),compMatrix)
             return T.dot(scoreVec,z)
         dummy = theano.shared(self.init_vector([self.hidden_dim]))
@@ -534,7 +529,6 @@ class TreeRNN(object):
             fn=_recurrence,
             outputs_info=[init_node_h, init_node_c, dummy,dummy,np.float(0.0)],
             sequences=[emb_x[num_leaves:], tree, T.arange(num_nodes)],
-            non_sequences=[tags],
             n_steps=num_nodes)
 
         return T.concatenate([leaf_h, parent_h], axis=0),T.sum(scores)
